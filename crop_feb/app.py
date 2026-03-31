@@ -7,10 +7,25 @@ import requests
 
 app = Flask(__name__)
 
-# Load crop recommendation model
-crop_model = pickle.load(open('model.pkl', 'rb'))
-crop_sc = pickle.load(open('standard_scaler.pkl', 'rb'))
-crop_ms = pickle.load(open('minmax_scaler.pkl', 'rb'))
+# Load crop recommendation model with absolute paths for Render/Linux
+base_dir = os.path.dirname(os.path.abspath(__file__))
+model_path = os.path.join(base_dir, 'model.pkl')
+sc_path = os.path.join(base_dir, 'standard_scaler.pkl')
+ms_path = os.path.join(base_dir, 'minmax_scaler.pkl')
+
+try:
+    with open(model_path, 'rb') as f:
+        crop_model = pickle.load(f)
+    with open(sc_path, 'rb') as f:
+        crop_sc = pickle.load(f)
+    with open(ms_path, 'rb') as f:
+        crop_ms = pickle.load(f)
+    print("LOG: All ML models and scalers loaded successfully.")
+except Exception as e:
+    print(f"CRITICAL ERROR: Failed to load models: {e}")
+    crop_model = None
+    crop_sc = None
+    crop_ms = None
 
 crop_dict = {
     1: "Rice", 2: "Maize", 3: "Jute", 4: "Cotton", 5: "Coconut", 6: "Papaya",
@@ -1166,7 +1181,6 @@ def recommend_fertiliser():
         recommendation = None
     
     return render_template('fertiliser_recommendation.html', recommendation=recommendation)
-
 @app.route('/scheme-eligibility')
 def scheme_eligibility():
     return render_template("scheme_eligibility.html")
@@ -1174,6 +1188,10 @@ def scheme_eligibility():
 @app.route('/check-eligibility', methods=['POST'])
 def check_eligibility():
     try:
+        # Add debugging
+        print("DEBUG: Received check-eligibility request")
+        print("DEBUG: Form data:", request.form)
+        
         # Prepare data for external API in the exact format it expects
         form_data = {
             'state': request.form['state'],
@@ -1257,19 +1275,34 @@ def check_eligibility():
             eligible_schemes = []
             
     except requests.exceptions.RequestException as e:
-        print(f"API Error: {e}")
+        print(f"API Error (RequestException): {e}")
+        import traceback
+        traceback.print_exc()
         eligible_schemes = []
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"General Error in check_eligibility: {e}")
         import traceback
         traceback.print_exc()
         eligible_schemes = []
     
     return render_template('scheme_eligibility.html', schemes=eligible_schemes)
 
+# Crop mapping dictionary
+crop_dict = {
+    1: "Rice", 2: "Maize", 3: "Jute", 4: "Cotton", 5: "Coconut", 6: "Papaya",
+    7: "Orange", 8: "Apple", 9: "Muskmelon", 10: "Watermelon", 11: "Grapes",
+    12: "Mango", 13: "Banana", 14: "Pomegranate", 15: "Lentil", 16: "Blackgram",
+    17: "Mungbean", 18: "Mothbeans", 19: "Pigeonpeas", 20: "Kidneybeans",
+    21: "Chickpea", 22: "Coffee"
+}
+
 @app.route("/predict-crop", methods=['POST'])
 def predict_crop():
     try:
+        # Add debugging
+        print("DEBUG: Received predict-crop request")
+        print("DEBUG: Form data:", request.form)
+        
         N = float(request.form['Nitrogen'])
         P = float(request.form['Phosporus'])
         K = float(request.form['Potassium'])
@@ -1280,6 +1313,11 @@ def predict_crop():
 
         feature_list = [N, P, K, temp, humidity, ph, rainfall]
         single_pred = np.array(feature_list).reshape(1, -1)
+
+        # Check if models are loaded
+        if crop_ms is None or crop_sc is None or crop_model is None:
+            print("ERROR: Models not loaded. Check the Render logs for 'CRITICAL ERROR' during startup.")
+            return render_template('crop_recommendation.html', crops=None, error="ML models are not loaded on server.")
 
         scaled = crop_ms.transform(single_pred)
         final_features = crop_sc.transform(scaled)
@@ -1330,6 +1368,9 @@ def predict_crop():
             })
             
     except Exception as e:
+        print(f"DEBUG - predict_crop error: {e}")
+        import traceback
+        traceback.print_exc()
         crops = None
         
     return render_template('crop_recommendation.html', crops=crops)
