@@ -1190,6 +1190,7 @@ def check_eligibility():
     try:
         # Add debugging
         print("DEBUG: Received check-eligibility request")
+        print(f"DEBUG: Request method: {request.method}")
         print("DEBUG: Form data:", request.form)
         
         # Prepare data for external API in the exact format it expects
